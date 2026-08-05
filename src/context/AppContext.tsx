@@ -6,19 +6,27 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  currentUserId,
+  currentUserId as initialCurrentUserId,
   users,
   notifications as initialNotifications,
+  userLocationShares as initialUserLocationShares,
 } from '../data/mock';
-import type { LocationShare, Notification, User } from '../data/types';
+import type {
+  LocationShare,
+  Notification,
+  User,
+  UserLocationShare,
+} from '../data/types';
 
 interface AppContextValue {
   currentUser: User;
   isAuthenticated: boolean;
-  login: () => void;
+  login: (userId: string) => void;
   logout: () => void;
   locationShare: LocationShare;
   setLocationShare: (s: LocationShare) => void;
+  userLocationShares: UserLocationShare[];
+  updateUserLocationShare: (share: Partial<UserLocationShare> & { userId: string }) => void;
   notifications: Notification[];
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -31,11 +39,15 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(initialCurrentUserId);
   const [locationShare, setLocationShare] = useState<LocationShare>({
     active: false,
     visibility: 'personne',
     durationMinutes: 60,
   });
+  const [userLocationShares, setUserLocationShares] = useState<UserLocationShare[]>(
+    initialUserLocationShares,
+  );
   const [notifications, setNotifications] = useState(initialNotifications);
   const [activeDahiraId, setActiveDahiraId] = useState('d1');
 
@@ -46,13 +58,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [notifications],
   );
 
+  const updateUserLocationShare = (
+    share: Partial<UserLocationShare> & { userId: string },
+  ) => {
+    setUserLocationShares((prev) => {
+      const existing = prev.find((item) => item.userId === share.userId);
+      if (existing) {
+        return prev.map((item) =>
+          item.userId === share.userId
+            ? {
+                ...item,
+                ...share,
+                updatedAt: share.updatedAt ?? new Date().toISOString(),
+              }
+            : item,
+        );
+      }
+      return [
+        ...prev,
+        {
+          ...share,
+          active: share.active ?? true,
+          visibility: share.visibility ?? 'public_limite',
+          lat: share.lat ?? 0,
+          lng: share.lng ?? 0,
+          updatedAt: share.updatedAt ?? new Date().toISOString(),
+        },
+      ];
+    });
+  };
+
   const value: AppContextValue = {
     currentUser,
     isAuthenticated,
-    login: () => setIsAuthenticated(true),
+    login: (userId: string) => {
+      setCurrentUserId(userId);
+      setIsAuthenticated(true);
+    },
     logout: () => setIsAuthenticated(false),
     locationShare,
     setLocationShare,
+    userLocationShares,
+    updateUserLocationShare,
     notifications: notifications.filter((n) => n.userId === currentUserId),
     markNotificationRead: (id) =>
       setNotifications((prev) =>

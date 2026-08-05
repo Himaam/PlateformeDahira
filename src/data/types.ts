@@ -159,6 +159,15 @@ export interface LocationShare {
   lng?: number;
 }
 
+export interface UserLocationShare {
+  userId: string;
+  active: boolean;
+  visibility: LocVisibility;
+  lat: number;
+  lng: number;
+  updatedAt: string;
+}
+
 export interface AuditLog {
   id: string;
   action: string;

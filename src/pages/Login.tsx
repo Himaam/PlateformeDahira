@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Eye, EyeOff, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { getUserByEmail, isInTijaniya } from '../data/mock';
+import type { User } from '../data/types';
 import './Login.css';
 
 export default function Login() {
@@ -12,6 +14,7 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
   const [step, setStep] = useState<'credentials' | 'mfa'>('credentials');
   const [otp, setOtp] = useState('');
+  const [candidateUser, setCandidateUser] = useState<User | null>(null);
   const [error, setError] = useState('');
 
   const handleCredentials = (e: React.FormEvent) => {
@@ -20,6 +23,21 @@ export default function Login() {
       setError('Veuillez renseigner email et mot de passe.');
       return;
     }
+
+    const user = getUserByEmail(email.trim());
+    if (!user) {
+      setError('Utilisateur introuvable. Vérifiez votre email.');
+      return;
+    }
+
+    if (!isInTijaniya(user.id)) {
+      setError(
+        "Accès refusé : votre silsila ne remonte pas à Cheikh Ahmad Tijani.",
+      );
+      return;
+    }
+
+    setCandidateUser(user);
     setError('');
     setStep('mfa');
   };
@@ -30,14 +48,23 @@ export default function Login() {
       setError('Saisissez le code à 6 chiffres (démo : 123456).');
       return;
     }
+    if (!candidateUser) {
+      setError('Erreur interne : aucun utilisateur sélectionné.');
+      return;
+    }
     setError('');
-    login();
+    login(candidateUser.id);
     navigate('/app');
   };
 
   const demoLogin = () => {
-    login();
-    navigate('/app');
+    const demoUser = getUserByEmail('amadou.diallo@email.com');
+    if (demoUser) {
+      login(demoUser.id);
+      navigate('/app');
+    } else {
+      setError('Impossible de trouver l’utilisateur démo.');
+    }
   };
 
   return (
@@ -116,10 +143,15 @@ export default function Login() {
             <div className="mfa-info">
               <Smartphone size={28} />
               <p>
-                Authentification à deux facteurs (MFA). Saisissez le code envoyé
-                sur votre appareil de confiance.
+                Authentification à deux facteurs (MFA). Votre silsila est
+                vérifiée jusqu'à Cheikh Ahmad Tijani avant l'accès.
               </p>
               <p className="form-hint">Code démo : <strong>123456</strong></p>
+              {candidateUser && (
+                <p className="form-hint" style={{ marginTop: '0.5rem' }}>
+                  Utilisateur : <strong>{candidateUser.prenom} {candidateUser.nom}</strong>
+                </p>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label" htmlFor="otp">

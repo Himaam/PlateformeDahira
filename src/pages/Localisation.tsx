@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import L from 'leaflet';
 import {
   MapPin,
   Shield,
@@ -8,9 +9,12 @@ import {
   AlertTriangle,
   Navigation,
 } from 'lucide-react';
-import { dahiras, formatDate } from '../data/mock';
+import { dahiras, formatDate, users } from '../data/mock';
 import { useApp } from '../context/AppContext';
 import type { LocVisibility } from '../data/types';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 const visibilityOptions: { id: LocVisibility; label: string; desc: string }[] = [
   {
@@ -43,16 +47,77 @@ const durations = [
   { min: 1440, label: '24 heures' },
 ];
 
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
+
 export default function Localisation() {
-  const { locationShare, setLocationShare } = useApp();
+  const {
+    currentUser,
+    locationShare,
+    setLocationShare,
+    userLocationShares,
+    updateUserLocationShare,
+  } = useApp();
   const [visibility, setVisibility] = useState<LocVisibility>(
     locationShare.visibility,
   );
   const [duration, setDuration] = useState(locationShare.durationMinutes || 60);
   const [toast, setToast] = useState('');
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const leafletMap = useRef<L.Map | null>(null);
+  const markerLayer = useRef<L.LayerGroup | null>(null);
 
-  // Positions déclarées des Dahiras (pas des membres) pour la découverte
   const nearby = dahiras.filter((d) => d.lat && d.lng);
+  const activeShares = userLocationShares.filter((share) => share.active);
+  const publicShares = activeShares.filter((share) => share.visibility !== 'personne');
+  const mapCenter = publicShares.length
+    ? [
+        publicShares.reduce((sum, share) => sum + share.lat, 0) / publicShares.length,
+        publicShares.reduce((sum, share) => sum + share.lng, 0) / publicShares.length,
+      ]
+    : [13.5127, 2.1128];
+
+  useEffect(() => {
+    if (!mapRef.current || leafletMap.current) return;
+
+    leafletMap.current = L.map(mapRef.current, {
+      center: mapCenter as [number, number],
+      zoom: 11,
+      zoomControl: true,
+      attributionControl: false,
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(leafletMap.current);
+
+    markerLayer.current = L.layerGroup().addTo(leafletMap.current);
+  }, [mapCenter]);
+
+  useEffect(() => {
+    if (!leafletMap.current || !markerLayer.current) return;
+
+    markerLayer.current.clearLayers();
+
+    publicShares.forEach((share) => {
+      const user = users.find((u) => u.id === share.userId);
+      const marker = L.marker([share.lat, share.lng]);
+      marker.bindPopup(
+        `<strong>${user?.prenom ?? 'Utilisateur'} ${user?.nom ?? ''}</strong><br/>` +
+          `Partage : ${share.visibility.replace('_', ' ')}<br/>` +
+          `Mise à jour : ${new Date(share.updatedAt).toLocaleString()}`,
+      );
+      marker.addTo(markerLayer.current as L.LayerGroup);
+    });
+
+    if (publicShares.length && leafletMap.current) {
+      const bounds = L.latLngBounds(publicShares.map((share) => [share.lat, share.lng] as [number, number]));
+      leafletMap.current.fitBounds(bounds.pad(0.3));
+    }
+  }, [publicShares]);
 
   const activate = () => {
     if (visibility === 'personne') {
@@ -61,13 +126,18 @@ export default function Localisation() {
       return;
     }
     const expires = new Date(Date.now() + duration * 60 * 1000).toISOString();
-    setLocationShare({
+    const payload = {
       active: true,
       visibility,
       durationMinutes: duration,
       expiresAt: expires,
       lat: 13.5127,
       lng: 2.1128,
+    };
+    setLocationShare(payload);
+    updateUserLocationShare({
+      userId: currentUser.id,
+      ...payload,
     });
     setToast(
       `Partage activé pour ${duration} min · public : ${visibilityOptions.find((v) => v.id === visibility)?.label}. Révoquable à tout moment.`,
@@ -76,10 +146,17 @@ export default function Localisation() {
   };
 
   const revoke = () => {
-    setLocationShare({
+    const payload = {
       active: false,
-      visibility: 'personne',
+      visibility: 'personne' as LocVisibility,
       durationMinutes: duration,
+    };
+    setLocationShare(payload);
+    updateUserLocationShare({
+      userId: currentUser.id,
+      ...payload,
+      lat: locationShare.lat ?? 13.5127,
+      lng: locationShare.lng ?? 2.1128,
     });
     setVisibility('personne');
     setToast('Partage de localisation révoqué immédiatement.');
@@ -288,6 +365,38 @@ export default function Localisation() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: '1.25rem' }}>
+            <h2 className="section-title">
+              <MapPin size={20} style={{ display: 'inline', verticalAlign: -4 }} /> Carte des partages
+            </h2>
+            <p className="form-hint" style={{ marginBottom: '1rem' }}>
+              Positions des utilisateurs ayant activé le partage visible en public ou en découverte limitée.
+            </p>
+            <div
+              ref={mapRef}
+              style={{
+                width: '100%',
+                minHeight: 360,
+                borderRadius: 'var(--radius-md)',
+                overflow: 'hidden',
+              }}
+            />
+            {!publicShares.length && (
+              <div
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.9rem 1rem',
+                  background: 'rgba(255, 247, 226, 0.9)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(201, 162, 39, 0.35)',
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                Aucun partage de position disponible pour le moment.
+              </div>
+            )}
           </div>
 
           <div className="card">

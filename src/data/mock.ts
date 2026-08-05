@@ -12,6 +12,7 @@ import type {
   AuditLog,
   Message,
   Notification,
+  UserLocationShare,
 } from './types';
 
 export const currentUserId = 'u1';
@@ -112,6 +113,33 @@ export const users: User[] = [
     dateInscription: '2023-01-01',
     mfaActive: true,
     silsilaVisible: false,
+  },
+];
+
+export const userLocationShares: UserLocationShare[] = [
+  {
+    userId: 'u1',
+    active: true,
+    visibility: 'public_limite',
+    lat: 13.5127,
+    lng: 2.1128,
+    updatedAt: '2026-08-05T21:00:00',
+  },
+  {
+    userId: 'u3',
+    active: true,
+    visibility: 'public_limite',
+    lat: 13.53,
+    lng: 2.09,
+    updatedAt: '2026-08-05T20:30:00',
+  },
+  {
+    userId: 'u6',
+    active: true,
+    visibility: 'dahira',
+    lat: 14.2117,
+    lng: 1.4531,
+    updatedAt: '2026-08-05T19:40:00',
   },
 ];
 
@@ -743,6 +771,26 @@ export const notifications: Notification[] = [
 
 export function getUser(id: string) {
   return users.find((u) => u.id === id);
+}
+
+export function getUserByEmail(email: string) {
+  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+}
+
+export function isInTijaniya(userId: string) {
+  const node = silsila.find((n) => n.userId === userId);
+  if (!node) return false;
+  if (node.id === 's3') return true;
+
+  let current = node;
+  while (current.parentId) {
+    if (current.parentId === 's3') return true;
+    const parent = silsila.find((n) => n.id === current.parentId);
+    if (!parent) return false;
+    current = parent;
+  }
+
+  return false;
 }
 
 export function getDahira(id: string) {
